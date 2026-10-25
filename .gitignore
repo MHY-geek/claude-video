@@ -1,0 +1,19 @@
+# Mac 系统文件
+.DS_Store
+
+# 渲染出来的视频和大文件（太大，不存版本）
+*.mp4
+*.mov
+*.webm
+*.gif
+*.wav
+*.mp3
+*.m4a
+out/
+
+# 工具生成的临时文件和依赖
+node_modules/
+.venv/
+__pycache__/
+*.log
+.om/
