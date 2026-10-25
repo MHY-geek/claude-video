@@ -1,0 +1,453 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400&family=IBM+Plex+Mono:wght@400&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500&display=block" rel="stylesheet">
+<style>html,body{margin:0;background:#070B0E}canvas{display:block}</style>
+</head><body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// 示意图：?view=city 特诺奇蒂特兰和堤道；?view=basin 整个墨西哥谷地的湖泊与城邦（约 1519 年）
+const VIEW = new URLSearchParams(location.search).get('view') || 'city';
+const W = 1920, H = 1080;
+const CFG = {
+  city:  { img: 'ground.png', box: { w: -99.27, e: -98.97, s: 19.34, n: 19.50 }, alt: '27 km', bar: 5,
+           credit: 'Contains modified Copernicus Sentinel data 2026  ·  湖岸、岛城与堤道为示意' },
+  basin: { img: 'basin.jpg',  box: { w: -99.43, e: -98.19, s: 19.20, n: 19.86 }, alt: '115 km', bar: 20,
+           credit: 'Sentinel-2 cloudless – s2maps.eu by EOX IT Services GmbH\n(Contains modified Copernicus Sentinel data 2016) · CC BY 4.0 · 湖岸为示意' },
+  mexico: { img: 'mexico.jpg', box: { w: -102.5, e: -83.5, s: 14.45, n: 24.52 }, alt: '1700 km', bar: 200,
+           credit: 'NASA Blue Marble 地形与海底地形 · 公有领域  ·  路线为示意' },
+}[VIEW];
+const BOX = CFG.box;
+const KM_LON = 111.32 * Math.cos((BOX.s + BOX.n) / 2 * Math.PI / 180), KM_LAT = 111.32;
+const X = lon => (lon - BOX.w) / (BOX.e - BOX.w) * W;
+const Y = lat => (BOX.n - lat) / (BOX.n - BOX.s) * H;
+const P = ([lon, lat]) => [X(lon), Y(lat)];
+const PX_PER_KM = W / ((BOX.e - BOX.w) * KM_LON);
+
+// ---------- 约 1519 年的地理（按历史地名大致定位，示意用） ----------
+const LAKE_TEXCOCO = [[-99.045,19.625],[-99.055,19.590],[-99.065,19.560],[-99.080,19.530],[-99.098,19.505],
+  [-99.112,19.497],[-99.130,19.496],[-99.160,19.493],[-99.186,19.486],[-99.189,19.460],[-99.191,19.440],[-99.190,19.420],[-99.189,19.402],[-99.185,19.378],
+  [-99.170,19.360],[-99.160,19.350],[-99.148,19.356],[-99.125,19.356],[-99.100,19.352],[-99.085,19.346],
+  [-99.060,19.358],[-99.030,19.368],[-99.000,19.374],[-98.975,19.390],[-98.962,19.405],[-98.963,19.425],
+  [-98.945,19.432],[-98.920,19.432],[-98.905,19.452],[-98.905,19.482],[-98.912,19.512],[-98.930,19.545],
+  [-98.955,19.575],[-98.985,19.600],[-99.010,19.625]];
+const LAKE_NORTH = [[-99.045,19.625],[-99.010,19.625],[-98.990,19.650],[-98.985,19.690],[-99.000,19.730],
+  [-99.030,19.760],[-99.060,19.800],[-99.100,19.815],[-99.130,19.800],[-99.120,19.765],[-99.095,19.730],
+  [-99.085,19.690],[-99.070,19.655]];
+const CHANNEL = [[-99.128,19.357],[-99.104,19.353],[-99.104,19.333],[-99.122,19.337]];
+const LAKE_XOCHIMILCO = [[-99.122,19.338],[-99.105,19.335],[-99.090,19.325],[-99.060,19.310],[-99.035,19.300],
+  [-99.015,19.290],[-99.020,19.270],[-99.050,19.255],[-99.090,19.252],[-99.120,19.258],[-99.145,19.275],
+  [-99.155,19.300],[-99.145,19.325]];
+const LAKE_CHALCO = [[-99.000,19.290],[-98.975,19.300],[-98.940,19.295],[-98.910,19.280],[-98.895,19.268],
+  [-98.910,19.250],[-98.940,19.235],[-98.970,19.225],[-99.000,19.235],[-99.015,19.260]];
+
+const ISLAND = [[-99.1515,19.4545],[-99.1440,19.4600],[-99.1340,19.4625],[-99.1240,19.4595],[-99.1175,19.4530],
+  [-99.1135,19.4440],[-99.1125,19.4340],[-99.1150,19.4250],[-99.1210,19.4180],[-99.1310,19.4140],
+  [-99.1420,19.4160],[-99.1490,19.4220],[-99.1530,19.4320],[-99.1540,19.4440]];
+const TLATELOLCO_LINE = [[-99.1545,19.4445],[-99.1132,19.4445]];
+const PRECINCT = [-99.1325, 19.4345];
+const blob = ([lon, lat], rKm, seed) => Array.from({ length: 14 }, (_, i) => {
+  const a = i / 14 * Math.PI * 2, r = rKm * (1 + 0.18 * Math.sin(3 * a + seed) + 0.1 * Math.cos(5 * a + seed * 2));
+  return [lon + Math.cos(a) * r / KM_LON, lat + Math.sin(a) * r / KM_LAT];
+});
+const TOWN = {
+  tenochtitlan: [-99.1313, 19.4351], tlatelolco: [-99.1372, 19.4513], tlacopan: [-99.1878, 19.4594], texcoco: [-98.8826, 19.5133],
+  azcapotzalco: [-99.1830, 19.4870], coyoacan: [-99.1620, 19.3500], iztapalapa: [-99.0930, 19.3580], xochimilco: [-99.1050, 19.2620],
+  cuitlahuac: [-99.0040, 19.2860], mixquic: [-98.9650, 19.2240], chalco: [-98.8970, 19.2640], chimalhuacan: [-98.9540, 19.4210],
+  ecatepec: [-99.0520, 19.6010], xaltocan: [-99.0450, 19.7130], zumpango: [-99.0990, 19.7970], tepeyac: [-99.1170, 19.4840],
+  chapultepec: [-99.1900, 19.4210], culhuacan: [-99.1110, 19.3330], acolman: [-98.9120, 19.6380], teotihuacan: [-98.8438, 19.6925],
+  otumba: [-98.7570, 19.6990], tlaxcala: [-98.2370, 19.3180],
+};
+// 岸上的城镇：周围留一小圈陆地；湖中的岛城：画成岛
+const SHORE_TOWNS = ['tlacopan', 'azcapotzalco', 'coyoacan', 'iztapalapa', 'xochimilco', 'chalco', 'chimalhuacan', 'ecatepec',
+  'zumpango', 'tepeyac', 'chapultepec', 'culhuacan', 'texcoco'];
+const BANOS = blob([-99.0845, 19.4415], 0.45, 1.3);
+const TEPEPOLCO = blob([-99.0298, 19.3775], 0.5, 2.1);
+const LAND_HOLES = [ISLAND, blob(TOWN.xaltocan, 0.9, 0.7), blob(TOWN.cuitlahuac, 0.45, 1.1), blob(TOWN.mixquic, 0.5, 2.4)];
+
+const CAUSE_TEPEYAC = [[-99.133,19.4615],[-99.125,19.472],TOWN.tepeyac];
+const CAUSE_TLACOPAN = [[-99.1535,19.437],[-99.163,19.443],[-99.176,19.450],TOWN.tlacopan];
+const CAUSE_SOUTH = [[-99.134,19.4142],[-99.136,19.400],[-99.139,19.385]];
+const CAUSE_COYOACAN = [[-99.139,19.385],[-99.151,19.367],TOWN.coyoacan];
+const CAUSE_IZTAPALAPA = [[-99.139,19.385],[-99.116,19.370],TOWN.iztapalapa];
+const CAUSE_CUITLAHUAC = [[-99.022,19.276],TOWN.cuitlahuac,[-98.988,19.296]];
+const DIKE = [[-99.086,19.500],[-99.090,19.478],[-99.093,19.450],[-99.095,19.418],[-99.096,19.388],[-99.094,19.366],[-99.092,19.353]];
+const AQUEDUCT = [TOWN.chapultepec,[-99.170,19.428],[-99.1535,19.433]];
+
+// ---------- 画法 ----------
+const C = { ink: '#F2F5F6', fresh: 'rgba(52,128,206,0.62)', salt: 'rgba(58,92,150,0.66)', shore: 'rgba(150,195,245,0.95)',
+            dike: '#D8BE86', aque: '#8FE3E0', ally: '#FFBE55', isle: 'rgba(235,220,190,0.16)', water: 'rgba(170,205,245,0.95)' };
+
+function grade(img) {
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.drawImage(img, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H), a = d.data, n = a.length / 4;
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < a.length; i += 4) hist[Math.round(0.2126*a[i] + 0.7152*a[i+1] + 0.0722*a[i+2])]++;
+  const pct = q => { let c = 0; for (let v = 0; v < 256; v++) { c += hist[v]; if (c >= q * n) return v; } return 255; };
+  const lo = pct(0.01), hi = pct(0.995);
+  const A = [7, 11, 14], B = [161, 167, 169];
+  for (let i = 0; i < a.length; i += 4) {
+    const L = 0.2126*a[i] + 0.7152*a[i+1] + 0.0722*a[i+2];
+    let t = Math.min(1, Math.max(0, (L - lo) / (hi - lo)));
+    t = t < 0.85 ? Math.pow(t, 0.92) : 0.85 + (t - 0.85) * 0.5;
+    for (let k = 0; k < 3; k++) a[i+k] = A[k] + (B[k] - A[k]) * t + (a[i+k] - L) * 0.2 * 0.6;
+  }
+  g.putImageData(d, 0, 0); return cv;
+}
+function path(c, pts, close, keep) {
+  if (!keep) c.beginPath();
+  pts.map(P).forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+  if (close) c.closePath();
+}
+function stroke(c, pts, w, color, { dash, halo = 3, close } = {}) {
+  c.save(); c.lineJoin = c.lineCap = 'round'; if (dash) c.setLineDash(dash);
+  path(c, pts, close);
+  if (halo) { c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = w + halo; c.stroke(); }
+  c.strokeStyle = color; c.lineWidth = w; c.stroke(); c.restore();
+}
+function causeway(c, pts, w) {           // 水上的路：深色描边里一条亮带
+  c.save(); c.lineJoin = c.lineCap = 'round'; path(c, pts);
+  c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = w + 4; c.stroke();
+  c.strokeStyle = C.ink; c.lineWidth = w; c.stroke(); c.restore();
+}
+function dike(c, pts, w) {               // 大堤：沙色双线
+  c.save(); c.lineJoin = c.lineCap = 'round'; path(c, pts);
+  c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = w + 3; c.stroke();
+  c.strokeStyle = C.dike; c.lineWidth = w; c.stroke();
+  c.strokeStyle = 'rgb(30,48,78)'; c.lineWidth = w * 0.4; c.stroke(); c.restore();
+}
+function text(c, s, x, y, font, color = C.ink, align = 'left') {
+  c.save(); c.font = font; c.textAlign = align; c.textBaseline = 'alphabetic';
+  c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowBlur = 7; c.fillStyle = color; c.fillText(s, x, y);
+  c.shadowBlur = 0; c.fillText(s, x, y); c.restore();
+}
+function label(c, at, dx, dy, s, { size = 24, weight = 400, color = C.ink, dot = true } = {}) {
+  const [x, y] = P(at), tx = x + dx, ty = y + dy;
+  c.save(); c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 3.5;
+  c.beginPath(); c.moveTo(x, y); c.lineTo(tx, ty); c.stroke();
+  c.strokeStyle = color; c.lineWidth = 1.3; c.stroke();
+  if (dot) { c.fillStyle = color; c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill(); }
+  c.restore();
+  text(c, s, tx + (dx < 0 ? -8 : 8), ty + size * 0.36, `${weight} ${size}px "Noto Sans SC"`, color, dx < 0 ? 'right' : 'left');
+}
+function town(c, at, kind) {             // 城邦符号：同盟双圈 / 其他城邦实心点 / 西班牙盟友菱形 / 战场准星
+  const [x, y] = P(at);
+  c.save(); c.shadowColor = 'rgba(0,0,0,0.8)'; c.shadowBlur = 5;
+  if (kind === 'triple') {
+    c.strokeStyle = C.ink; c.lineWidth = 2.2;
+    c.beginPath(); c.arc(x, y, 11, 0, 7); c.stroke(); c.beginPath(); c.arc(x, y, 5.5, 0, 7); c.fillStyle = C.ink; c.fill();
+  } else if (kind === 'ally') {
+    c.fillStyle = C.ally; c.beginPath(); c.moveTo(x, y - 11); c.lineTo(x + 11, y); c.lineTo(x, y + 11); c.lineTo(x - 11, y); c.closePath(); c.fill();
+  } else if (kind === 'battle') {
+    const r = 14, k = 6; c.strokeStyle = C.ally; c.lineWidth = 2;
+    c.beginPath(); [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx, sy]) => { c.moveTo(x + sx*r, y + sy*(r-k)); c.lineTo(x + sx*r, y + sy*r); c.lineTo(x + sx*(r-k), y + sy*r); }); c.stroke();
+    c.fillStyle = C.ally; c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill();
+  } else { c.fillStyle = C.ink; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill(); }
+  c.restore();
+}
+
+// ---------- 湖面：用海拔数据（Terrarium DEM）在大致的谷地范围里取低于某个高度的地方 ----------
+const SOUTH_CAP = [[-99.165,19.353],[-99.150,19.345],[-99.125,19.342],[-99.095,19.330],[-99.060,19.315],[-99.035,19.305],
+  [-99.010,19.298],[-98.985,19.305],[-98.950,19.302],[-98.920,19.290],[-98.900,19.275],[-98.893,19.262],[-98.905,19.248],
+  [-98.930,19.236],[-98.958,19.219],[-98.985,19.219],[-99.005,19.232],[-99.030,19.248],[-99.060,19.250],[-99.095,19.247],
+  [-99.125,19.252],[-99.150,19.268],[-99.165,19.295],[-99.168,19.325]];
+const LEVEL = +(new URLSearchParams(location.search).get('level') || 2248);
+const DEM_Z = 12;
+const BASIN_REGION = [[-99.215,19.835],[-99.050,19.850],[-98.960,19.790],[-98.950,19.660],[-98.880,19.620],
+  [-98.855,19.520],[-98.870,19.440],[-98.900,19.380],[-98.885,19.300],[-98.885,19.240],[-98.960,19.212],
+  [-99.060,19.228],[-99.120,19.236],[-99.185,19.265],[-99.205,19.340],[-99.210,19.450],[-99.205,19.520],[-99.230,19.640],[-99.240,19.760]];
+const merc = (lon, lat, z) => { const n = 2 ** z * 256, r = lat * Math.PI / 180;
+  return [(lon + 180) / 360 * n, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n]; };
+async function loadDEM() {
+  const [ax, ay] = merc(BOX.w, BOX.n, DEM_Z), [bx, by] = merc(BOX.e, BOX.s, DEM_Z);
+  const tx0 = Math.floor(ax / 256), ty0 = Math.floor(ay / 256), tx1 = Math.floor(bx / 256), ty1 = Math.floor(by / 256);
+  const w = (tx1 - tx0 + 1) * 256, h = (ty1 - ty0 + 1) * 256;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d');
+  await Promise.all([...Array(tx1 - tx0 + 1).keys()].flatMap(i => [...Array(ty1 - ty0 + 1).keys()].map(async j => {
+    const im = new Image(); im.src = `dem/${DEM_Z}/${tx0 + i}/${ty0 + j}.png`; await im.decode(); g.drawImage(im, i * 256, j * 256);
+  })));
+  const d = g.getImageData(0, 0, w, h).data, e = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) e[i] = d[i*4] * 256 + d[i*4+1] + d[i*4+2] / 256 - 32768;
+  return { ox: tx0 * 256, oy: ty0 * 256, w, h, e };
+}
+function elevAt(D, lon, lat) {
+  let [x, y] = merc(lon, lat, DEM_Z); x -= D.ox + 0.5; y -= D.oy + 0.5;
+  const i = Math.max(0, Math.min(D.w - 2, Math.floor(x))), j = Math.max(0, Math.min(D.h - 2, Math.floor(y))), fx = x - i, fy = y - j;
+  const k = j * D.w + i;
+  return (D.e[k] * (1 - fx) + D.e[k+1] * fx) * (1 - fy) + (D.e[k+D.w] * (1 - fx) + D.e[k+D.w+1] * fx) * fy;
+}
+let DEM, MASK, SHORE_PX;
+function buildMask() {
+  const rc = document.createElement('canvas'); rc.width = W; rc.height = H; const rg = rc.getContext('2d');
+  rg.save(); rg.beginPath(); rg.rect(0, 0, W, Y(19.345)); rg.clip(); path(rg, BASIN_REGION, true); rg.fill(); rg.restore();
+  path(rg, SOUTH_CAP, true); rg.fill();
+  const reg = rg.getImageData(0, 0, W, H).data, inside = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) { const lat = BOX.n - (y + 0.5) / H * (BOX.n - BOX.s);
+    for (let x = 0; x < W; x++) { const k = y * W + x;
+      if (reg[k*4+3] > 127 && elevAt(DEM, BOX.w + (x + 0.5) / W * (BOX.e - BOX.w), lat) < LEVEL) inside[k] = 1; } }
+  // 平滑：模糊后再取一半，抹掉平地上的噪点
+  { const bc = document.createElement('canvas'); bc.width = W; bc.height = H; const bg = bc.getContext('2d');
+    const bd0 = bg.createImageData(W, H); for (let k = 0; k < W * H; k++) bd0.data[k*4+3] = inside[k] ? 255 : 0;
+    bg.putImageData(bd0, 0, 0);
+    const sc2 = document.createElement('canvas'); sc2.width = W; sc2.height = H; const sg2 = sc2.getContext('2d');
+    sg2.filter = `blur(${Math.max(1.5, 0.12 * PX_PER_KM)}px)`; sg2.drawImage(bc, 0, 0);
+    const sd = sg2.getImageData(0, 0, W, H).data; for (let k = 0; k < W * H; k++) inside[k] = sd[k*4+3] > 127 ? 1 : 0; }
+  // 去掉小于约 0.3 km² 的零碎水坑
+  const minPx = 0.3 * PX_PER_KM * PX_PER_KM, lab = new Int32Array(W * H), stack = [];
+  for (let s0 = 0; s0 < W * H; s0++) { if (!inside[s0] || lab[s0]) continue;
+    const comp = []; stack.push(s0); lab[s0] = 1;
+    while (stack.length) { const k = stack.pop(); comp.push(k); const x = k % W, y = (k / W) | 0;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = x + dx, ny = y + dy, n = ny * W + nx;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H && inside[n] && !lab[n]) { lab[n] = 1; stack.push(n); } } }
+    if (comp.length < minPx) comp.forEach(k => inside[k] = 0); }
+  { const lab2 = new Uint8Array(W * H), minLand = 0.08 * PX_PER_KM * PX_PER_KM;
+    for (let s0 = 0; s0 < W * H; s0++) { if (inside[s0] || lab2[s0]) continue;
+      const comp = []; let edge = false; stack.push(s0); lab2[s0] = 1;
+      while (stack.length) { const k = stack.pop(); comp.push(k); const x = k % W, y = (k / W) | 0;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true;
+        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = x + dx, ny = y + dy, n = ny * W + nx;
+          if (nx >= 0 && ny >= 0 && nx < W && ny < H && !inside[n] && !lab2[n]) { lab2[n] = 1; stack.push(n); } } }
+      if (!edge && comp.length < minLand) comp.forEach(k => inside[k] = 1); } }
+  const mc = document.createElement('canvas'); mc.width = W; mc.height = H; const mg = mc.getContext('2d');
+  const md = mg.createImageData(W, H); for (let k = 0; k < W * H; k++) md.data[k*4+3] = inside[k] ? 255 : 0;
+  mg.putImageData(md, 0, 0);
+  mg.globalCompositeOperation = 'destination-out'; LAND_HOLES.forEach(l => { path(mg, l, true); mg.fill(); });
+  const rTown = Math.max(6, Math.min(0.6 * PX_PER_KM, 14));
+  SHORE_TOWNS.forEach(t => { const [x, y] = P(TOWN[t]); mg.beginPath(); mg.arc(x, y, rTown, 0, 7); mg.fill(); });
+  // 柔一点的边
+  const sc = document.createElement('canvas'); sc.width = W; sc.height = H; const sg = sc.getContext('2d');
+  sg.filter = 'blur(1.2px)'; sg.drawImage(mc, 0, 0); MASK = sc;
+  // 岸线：二值边缘
+  const bd = mg.getImageData(0, 0, W, H).data, ec = document.createElement('canvas'); ec.width = W; ec.height = H;
+  const eg = ec.getContext('2d'), ed = eg.createImageData(W, H);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const k = y * W + x;
+    if (bd[k*4+3] > 127 && (bd[(k-1)*4+3] < 128 || bd[(k+1)*4+3] < 128 || bd[(k-W)*4+3] < 128 || bd[(k+W)*4+3] < 128)) {
+      ed.data[k*4] = 150; ed.data[k*4+1] = 195; ed.data[k*4+2] = 245; ed.data[k*4+3] = 255; } }
+  eg.putImageData(ed, 0, 0); SHORE_PX = ec;
+}
+function water(c) {
+  const lc = document.createElement('canvas'); lc.width = W; lc.height = H; const g = lc.getContext('2d');
+  g.fillStyle = C.salt; g.fillRect(0, 0, W, H);
+  // 大堤以西、南边两个湖：较淡的水
+  g.save(); g.beginPath(); path(g, [...DIKE, [-99.6, 19.353], [-99.6, 19.505]], true, true);
+  path(g, [[-99.6, 19.353], [-99.092, 19.353], [-99.092, 19.345], [-98.6, 19.345], [-98.6, 19.0], [-99.6, 19.0]], true, true); g.clip();
+  g.fillStyle = C.fresh; g.fillRect(0, 0, W, H); g.restore();
+  g.fillStyle = 'rgba(190,215,250,0.16)';
+  for (let y = 0; y < H; y += 8) for (let x = (y / 8 % 2) * 4; x < W; x += 8) { g.beginPath(); g.arc(x, y, 1, 0, 7); g.fill(); }
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(MASK, 0, 0);
+  c.drawImage(lc, 0, 0);
+  c.save(); c.globalAlpha = 0.9; c.drawImage(SHORE_PX, 0, 0); c.restore();
+}
+
+let ctx;
+const at = (x, y) => [BOX.w + x / W * (BOX.e - BOX.w), BOX.n - y / H * (BOX.n - BOX.s)];
+const sw = {
+  fresh: (x, y) => { ctx.fillStyle = C.fresh; ctx.fillRect(x, y - 10, 44, 20); ctx.strokeStyle = C.shore; ctx.strokeRect(x, y - 10, 44, 20); },
+  salt:  (x, y) => { ctx.fillStyle = C.salt;  ctx.fillRect(x, y - 10, 44, 20); ctx.strokeStyle = C.shore; ctx.strokeRect(x, y - 10, 44, 20); },
+  land:  (x, y) => { ctx.fillStyle = '#5b6062'; ctx.fillRect(x, y - 10, 44, 20); },
+  isle:  (x, y) => { ctx.fillStyle = '#6d6a63'; ctx.fillRect(x, y - 10, 44, 20); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.strokeRect(x, y - 10, 44, 20); },
+  cause: (x, y) => { ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 44, y); ctx.stroke(); ctx.strokeStyle = C.ink; ctx.lineWidth = 5; ctx.stroke(); },
+  dike:  (x, y) => { ctx.strokeStyle = C.dike; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 44, y); ctx.stroke(); ctx.strokeStyle = 'rgb(30,48,78)'; ctx.lineWidth = 2.4; ctx.stroke(); },
+  sea:   (x, y) => { ctx.strokeStyle = C.ink; ctx.lineWidth = 2.2; ctx.setLineDash([10, 7]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 44, y); ctx.stroke(); },
+  land_route: (x, y) => { ctx.strokeStyle = C.ally; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 44, y); ctx.stroke(); },
+  aque:  (x, y) => { ctx.strokeStyle = C.aque; ctx.lineWidth = 2.2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 44, y); ctx.stroke(); },
+  triple:(x, y) => town(ctx, at(x + 22, y), 'triple'),
+  other: (x, y) => town(ctx, at(x + 22, y), 'other'),
+  ally:  (x, y) => town(ctx, at(x + 22, y), 'ally'),
+  battle:(x, y) => town(ctx, at(x + 22, y), 'battle'),
+};
+function legend(c, x, y, rows) {
+  const h = 34 * rows.length + 22, w = 330;
+  c.save(); c.fillStyle = 'rgba(7,11,14,0.8)'; c.fillRect(x, y, w, h);
+  c.strokeStyle = 'rgba(242,245,246,0.35)'; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, w, h); c.restore();
+  rows.forEach(([draw, s], i) => {
+    const cy = y + 28 + i * 34; c.save(); draw(x + 20, cy); c.restore();
+    text(c, s, x + 80, cy + 8, '400 21px "Noto Sans SC"');
+  });
+}
+
+function instruments(c, title, sub) {
+  text(c, title, 48, 70, '500 34px "Noto Sans SC"');
+  text(c, sub, 48, 106, '400 21px "IBM Plex Mono"', 'rgba(242,245,246,0.75)');
+  text(c, '高度  ' + CFG.alt, W - 48, 64, '400 24px "IBM Plex Mono"', C.ink, 'right');
+  const sb = CFG.bar * PX_PER_KM, sx = W - 48 - sb, sy = 112;
+  c.save(); c.strokeStyle = C.ink; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(sx, sy - 8); c.lineTo(sx, sy); c.lineTo(sx + sb, sy); c.lineTo(sx + sb, sy - 8); c.stroke(); c.restore();
+  text(c, CFG.bar + ' km', sx + sb, sy - 14, '400 21px "IBM Plex Mono"', C.ink, 'right');
+  if (VIEW !== 'mexico') {
+    c.save(); c.translate(W - 70, 175); c.fillStyle = C.ink;          // 指北
+    c.beginPath(); c.moveTo(0, -22); c.lineTo(8, 6); c.lineTo(0, 0); c.lineTo(-8, 6); c.closePath(); c.fill(); c.restore();
+    text(c, 'N', W - 70, 215, '400 20px "IBM Plex Mono"', C.ink, 'center');
+  }
+  CFG.credit.split('\n').reverse().forEach((s, i) => text(c, s, W - 48, H - 30 - i * 24, '400 17px "IBM Plex Mono"', 'rgba(242,245,246,0.75)', 'right'));
+}
+
+function drawCity(c) {
+  water(c);
+  // 岛城：暖一点的陆地色，和湖水分开
+  c.save(); path(c, ISLAND, true); c.fillStyle = C.isle; c.fill(); c.restore();
+  stroke(c, ISLAND, 2.4, C.ink, { close: true });
+  stroke(c, TLATELOLCO_LINE, 1.4, 'rgba(242,245,246,0.8)', { dash: [7, 6], halo: 2 });
+  const [px, py] = P(PRECINCT), hw = 0.0019 * W / (BOX.e - BOX.w), hh = 0.0018 * H / (BOX.n - BOX.s);
+  c.save(); c.strokeStyle = C.ink; c.lineWidth = 1.6; c.strokeRect(px - hw, py - hh, hw * 2, hh * 2); c.restore();
+
+  stroke(c, AQUEDUCT, 2.4, C.aque, { dash: [8, 6] });
+  dike(c, DIKE, 7);
+  [CAUSE_TEPEYAC, CAUSE_TLACOPAN, CAUSE_SOUTH, CAUSE_COYOACAN, CAUSE_IZTAPALAPA].forEach(p => causeway(c, p, 5));
+
+  // 水域名称
+  text(c, '墨西哥湖', X(-99.170), Y(19.392), '500 30px "Noto Serif SC"', C.water, 'center');
+  text(c, '大堤以西 · 较淡的水', X(-99.170), Y(19.392) + 30, '400 19px "Noto Sans SC"', C.water, 'center');
+  text(c, '特斯科科湖', X(-99.030), Y(19.415), '500 44px "Noto Serif SC"', C.water, 'center');
+  text(c, '大堤以东 · 咸水', X(-99.030), Y(19.415) + 36, '400 21px "Noto Sans SC"', C.water, 'center');
+
+  // 岛上
+  text(c, '特拉特洛尔科', X(-99.134), Y(19.4535), '500 24px "Noto Sans SC"', C.ink, 'center');
+  text(c, '特诺奇蒂特兰', X(-99.133), Y(19.4235), '700 32px "Noto Sans SC"', C.ink, 'center');
+  text(c, '大神庙', px + hw + 8, py + 7, '400 19px "Noto Sans SC"');
+
+  // 堤道名称
+  label(c, [-99.165, 19.444], -30, 60, '特拉科潘堤道（西）', { dot: false });
+  label(c, [-99.126, 19.471], -70, -20, '特佩亚克堤道（北）', { dot: false });
+  label(c, [-99.1365, 19.398], 70, 18, '伊斯塔帕拉帕堤道（南）', { dot: false });
+  label(c, [-99.0915, 19.462], 40, -20, '内萨瓦尔科约特尔大堤', { color: C.dike, dot: false });
+  label(c, [-99.180, 19.4245], -30, 70, '查普尔特佩克引水渠', { color: C.aque, dot: false });
+
+  // 岸上的城镇和湖中小岛
+  label(c, TOWN.tlacopan, -40, -40, '特拉科潘（三城同盟）');
+  label(c, TOWN.tepeyac, 40, -10, '特佩亚克');
+  label(c, TOWN.coyoacan, -40, 10, '科约阿坎');
+  label(c, TOWN.iztapalapa, 50, 10, '伊斯塔帕拉帕');
+  label(c, [-99.0845, 19.4415], 50, 30, '佩尼翁岛', { dot: false });
+  label(c, [-99.0298, 19.3775], -40, 40, '特佩波尔科岛', { dot: false });
+
+  instruments(c, '特诺奇蒂特兰和它的堤道', '约 1519 年 · 叠在 2026 年的墨西哥城上 · 示意');
+  legend(c, 48, 770, [[sw.fresh, '湖水（较淡）'], [sw.salt, '湖水（咸）'], [sw.isle, '岛城'], [sw.land, '陆地（今天的城区）'],
+                      [sw.cause, '堤道：水上的石路'], [sw.dike, '大堤：拦水防洪'], [sw.aque, '引水渠：送淡水进城']]);
+}
+
+function drawBasin(c) {
+  water(c);
+  stroke(c, ISLAND, 1.6, C.ink, { close: true });
+  dike(c, DIKE, 4);
+  [CAUSE_TEPEYAC, CAUSE_TLACOPAN, CAUSE_SOUTH, CAUSE_COYOACAN, CAUSE_IZTAPALAPA, CAUSE_CUITLAHUAC].forEach(p => causeway(c, p, 2.2));
+
+  // 到特拉斯卡拉的直线距离
+  const T = TOWN.tenochtitlan, TL = TOWN.tlaxcala;
+  stroke(c, [T, TL], 1.4, 'rgba(255,190,85,0.85)', { dash: [10, 8], halo: 2.5 });
+  const km = Math.hypot((TL[0] - T[0]) * KM_LON, (TL[1] - T[1]) * KM_LAT);
+  const [mx, my] = P([(T[0] + TL[0]) / 2, (T[1] + TL[1]) / 2]);
+  text(c, '直线约 ' + Math.round(km / 5) * 5 + ' km，中间隔着山', mx + 40, my - 18, '400 22px "Noto Sans SC"', C.ally, 'left');
+
+  // 湖名
+  text(c, '特斯科科湖', X(-99.005), Y(19.470), '500 38px "Noto Serif SC"', C.water, 'center');
+  label(c, [-99.035, 19.765], 70, -20, '夏尔托坎湖 / 宗潘戈湖', { color: C.water, dot: false, size: 22 });
+  text(c, '霍奇米尔科湖', X(-99.080), Y(19.290), '500 22px "Noto Serif SC"', C.water, 'center');
+  text(c, '查尔科湖', X(-98.955), Y(19.258), '500 22px "Noto Serif SC"', C.water, 'center');
+
+  // 城邦
+  const towns = [
+    ['triple', 'tenochtitlan', 70, 45, '特诺奇蒂特兰', 30, 700],
+    ['triple', 'tlacopan', -60, 0, '特拉科潘', 28, 700],
+    ['triple', 'texcoco', 60, 0, '特斯科科', 28, 700],
+    ['other',  'azcapotzalco', -60, -30, '阿斯卡波察尔科'],
+    ['other',  'coyoacan', -60, 15, '科约阿坎'],
+    ['other',  'iztapalapa', 60, 25, '伊斯塔帕拉帕'],
+    ['other',  'xochimilco', -60, 0, '霍奇米尔科'],
+    ['other',  'cuitlahuac', 40, -40, '奎特拉瓦克（岛城）'],
+    ['other',  'mixquic', 60, 20, '米斯基克（岛城）'],
+    ['other',  'chalco', 60, -5, '查尔科'],
+    ['other',  'chimalhuacan', 50, 15, '奇马尔瓦坎'],
+    ['other',  'ecatepec', 60, -5, '埃卡特佩克'],
+    ['other',  'xaltocan', 60, 10, '夏尔托坎（岛城）'],
+    ['other',  'zumpango', -60, 0, '宗潘戈'],
+    ['other',  'acolman', 60, 0, '阿科尔曼'],
+    ['other',  'teotihuacan', 30, -70, '特奥蒂瓦坎（古城遗址）'],
+    ['battle', 'otumba', 60, 30, '奥通巴 · 1520 年 7 月战场'],
+    ['ally',   'tlaxcala', -60, -40, '特拉斯卡拉（西班牙人的盟友）', 26, 700],
+  ];
+  towns.forEach(([kind, id, dx, dy, s, size = 23, weight = 400]) => {
+    const p = TOWN[id]; town(c, p, kind);
+    label(c, p, dx, dy, s, { size, weight, dot: false, color: kind === 'ally' || kind === 'battle' ? C.ally : C.ink });
+  });
+
+  // 画面外
+  text(c, '↓ 伊斯塔西瓦特尔火山', X(-98.642), H - 100, '400 22px "Noto Sans SC"', 'rgba(242,245,246,0.85)', 'center');
+  text(c, '↓ 乔卢拉 · 韦拉克鲁斯方向', X(-98.303), H - 100, '400 22px "Noto Sans SC"', C.ally, 'center');
+
+  instruments(c, '墨西哥谷地的湖泊与城邦', '约 1519 年 · 示意');
+  legend(c, 48, 150, [[sw.fresh, '较淡的湖水'], [sw.salt, '咸湖水'], [sw.cause, '堤道'], [sw.dike, '内萨瓦尔科约特尔大堤'],
+                      [sw.triple, '三城同盟'], [sw.other, '其他城邦'], [sw.ally, '西班牙人的盟友'], [sw.battle, '战场']]);
+}
+
+// ---------- 大地图：1519 年从古巴到特诺奇蒂特兰 ----------
+const STOP = {
+  cuba: [-84.95, 21.86], cozumel: [-86.95, 20.42], potonchan: [-92.65, 18.55], ulua: [-96.13, 19.21],
+  cempoala: [-96.41, 19.44], xalapa: [-96.92, 19.54], cholula: [-98.303, 19.063], paso: [-98.65, 19.09], amecameca: [-98.77, 19.125],
+};
+const SEA_ROUTE = [STOP.cuba, [-86.1,21.1], STOP.cozumel, [-86.75,21.0], [-87.05,21.75], [-88.6,21.6], [-90.1,21.2], [-90.75,20.3],
+  [-91.1,19.3], [-92.0,18.85], STOP.potonchan, [-93.4,18.6], [-94.4,18.35], [-95.3,18.85], STOP.ulua];
+const LAND_ROUTE = [STOP.ulua, STOP.cempoala, STOP.xalapa, [-97.25,19.62], [-97.66,19.72], TOWN.tlaxcala, STOP.cholula,
+  STOP.paso, STOP.amecameca, TOWN.iztapalapa, TOWN.tenochtitlan];
+function drawMexico(c) {
+  const km = pts => pts.slice(1).reduce((s, p, i) => s + Math.hypot((p[0] - pts[i][0]) * KM_LON, (p[1] - pts[i][1]) * KM_LAT), 0);
+  // 海名、地名
+  text(c, '墨西哥湾', X(-93.3), Y(22.6), '500 48px "Noto Serif SC"', 'rgba(200,225,250,0.92)', 'center');
+  text(c, '加勒比海', X(-85.6), Y(18.2), '500 40px "Noto Serif SC"', 'rgba(200,225,250,0.92)', 'center');
+  text(c, '太平洋', X(-97.3), Y(15.3), '500 40px "Noto Serif SC"', 'rgba(200,225,250,0.92)', 'center');
+  text(c, '尤卡坦半岛', X(-89.2), Y(20.5), 'italic 500 28px "Noto Sans SC"', 'rgba(242,245,246,0.85)', 'center');
+  text(c, '古巴', X(-84.0), Y(22.55), 'italic 500 28px "Noto Sans SC"', 'rgba(242,245,246,0.85)', 'center');
+  text(c, '东马德雷山脉', X(-99.9), Y(22.2), 'italic 400 24px "Noto Sans SC"', 'rgba(242,245,246,0.8)', 'center');
+  text(c, '墨西哥中央高原', X(-101.2), Y(21.3), 'italic 400 24px "Noto Sans SC"', 'rgba(242,245,246,0.8)', 'center');
+
+  // 图 2 的范围
+  const [bx0, by0] = P([-99.43, 19.86]), [bx1, by1] = P([-98.19, 19.20]);
+  c.save(); c.strokeStyle = 'rgba(242,245,246,0.85)'; c.lineWidth = 1.4; c.setLineDash([5, 4]);
+  c.strokeRect(bx0, by0, bx1 - bx0, by1 - by0); c.restore();
+  text(c, '图 2 范围', bx0, by0 - 8, '400 18px "Noto Sans SC"', 'rgba(242,245,246,0.85)');
+
+  // 路线：海上虚线，陆上实线
+  stroke(c, SEA_ROUTE, 2.2, C.ink, { dash: [10, 7], halo: 3 });
+  stroke(c, LAND_ROUTE, 3, C.ally, { halo: 3 });
+  [STOP.cuba, STOP.cozumel, STOP.potonchan, STOP.ulua, STOP.cempoala].forEach(p => town(c, p, 'other'));
+  town(c, STOP.cholula, 'battle'); town(c, TOWN.tlaxcala, 'ally'); town(c, TOWN.tenochtitlan, 'triple');
+
+  label(c, STOP.cuba, -40, -70, '1519 年 2 月 · 从古巴西端启航', { dot: false });
+  label(c, STOP.cozumel, -40, 80, '科苏梅尔岛 · 找回翻译阿吉拉尔', { dot: false });
+  label(c, STOP.potonchan, 20, 80, '波通昌 · 3 月首战，得到翻译玛林切', { dot: false });
+  label(c, STOP.ulua, 40, 120, '4 月登陆 · 建韦拉克鲁斯', { dot: false });
+  label(c, STOP.cempoala, 30, -80, '森波阿拉 · 与托托纳克人结盟', { dot: false });
+  label(c, TOWN.tlaxcala, 60, 60, '特拉斯卡拉 · 9 月先战后盟', { dot: false, color: C.ally, weight: 500 });
+  label(c, STOP.cholula, -10, 100, '乔卢拉 · 10 月大屠杀', { dot: false, color: C.ally });
+  label(c, TOWN.tenochtitlan, 10, -120, '特诺奇蒂特兰 · 11 月 8 日入城', { dot: false, weight: 700, size: 26 });
+
+  // 读数：陆上行军的路程
+  const rx = 1180, ry = 820, d = km(LAND_ROUTE);
+  text(c, '从海边到湖上之城 · 陆路', rx, ry, '400 26px "Noto Sans SC"');
+  text(c, '≈' + Math.round(d / 10) * 10, rx - 4, ry + 104, '300 112px "Barlow Condensed"', C.ally);
+  c.font = '300 112px "Barlow Condensed"';
+  text(c, 'km', rx - 4 + c.measureText('≈' + Math.round(d / 10) * 10).width + 10, ry + 104, '300 50px "Barlow Condensed"', C.ally);
+  text(c, '1519 年 8 月 16 日出发 → 11 月 8 日入城 · 沿推测路线测算', rx, ry + 144, '400 21px "Noto Sans SC"', 'rgba(242,245,246,0.8)');
+
+  instruments(c, '1519 年：从古巴到特诺奇蒂特兰', '虚线 · 海路    实线 · 陆路行军');
+  legend(c, 48, 800, [[sw.sea, '海路'], [sw.land_route, '陆路行军'], [sw.triple, '阿兹特克首都'], [sw.ally, '西班牙人的盟友'],
+                      [sw.battle, '屠杀 / 战斗'], [sw.other, '途经地点']]);
+}
+
+async function draw() {
+  await document.fonts.ready;
+  for (const f of ['300 112px "Barlow Condensed"', 'italic 500 28px "Noto Sans SC"', '400 24px "Noto Sans SC"', '700 32px "Noto Sans SC"', '500 40px "Noto Serif SC"', '400 22px "IBM Plex Mono"'])
+    await document.fonts.load(f, '特斯科科湖 0123456789 km');
+  const img = new Image(); img.src = CFG.img; await img.decode();
+  const c = ctx = document.getElementById('c').getContext('2d');
+  if (VIEW === 'mexico') {                 // 轨道高度：真彩色，只压暗一点让标注读得清
+    c.drawImage(img, 0, 0, W, H); c.fillStyle = 'rgba(7,11,14,0.22)'; c.fillRect(0, 0, W, H);
+    drawMexico(c); return;
+  }
+  c.drawImage(grade(img), 0, 0);
+  DEM = await loadDEM(); buildMask();
+  (VIEW === 'basin' ? drawBasin : drawCity)(c);
+}
+let done = draw();
+window.READY = true;
+window.render = async () => { await done; };
+</script></body></html>
