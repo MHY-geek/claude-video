@@ -1,0 +1,21 @@
+《湖上之城：特诺奇蒂特兰的陷落》使用的第三方素材
+
+影像
+- NASA Blue Marble Next Generation 与 Blue Marble 地形/海底地形（经 NASA GIBS）— 公有领域（NASA）
+- Copernicus Sentinel-2 L2A，2026-02-09（经 Microsoft Planetary Computer）— "Contains modified Copernicus Sentinel data 2026"
+- Sentinel-2 cloudless 2016 by EOX IT Services GmbH（https://s2maps.eu）— CC BY 4.0（Contains modified Copernicus Sentinel data 2016）
+- 地形：Terrarium 地形瓦片（AWS Open Data，Mapzen/Tilezen）— 数据来源含 SRTM（公有领域）等
+- 1524 年纽伦堡版特诺奇蒂特兰地图（Friedrich Peypus 刻印），Wikimedia Commons — 公有领域；原件藏 Newberry Library
+
+字体（SIL Open Font License 1.1）
+- Barlow Condensed — Jeremy Tribby
+- IBM Plex Mono — IBM
+- Noto Sans SC、Noto Serif SC — Google / Adobe（按片中用到的字符子集化）
+
+声音
+- 旁白：Microsoft Azure 神经语音 zh-CN-YunyangNeural，经 edge-tts 生成
+- 采样乐器：VS Chamber Orchestra: Community Edition（Versilian Studios / Sam Gossner）— CC0 1.0；Versilian Community Sample Library — CC0 1.0
+- 其余配乐与音效为程序合成
+
+史实来源见 FACTS.md。湖岸、堤道、行军路线均为示意。
+制作工具：Lemo-Opuscar 风格库（MIT）的卫星简报风格与渲染工具。

@@ -17,3 +17,10 @@ node_modules/
 __pycache__/
 *.log
 .om/
+
+# 《湖上之城》：可以重新下载或重新生成的大文件
+tenochtitlan/assets/raw/
+tenochtitlan/assets/plates/
+tenochtitlan/stills/
+tenochtitlan/voice/.cache/
+tenochtitlan/out_render.log
